@@ -1,11 +1,16 @@
 from fastapi import FastAPI, Request, HTTPException
 import requests
 import logging
+import re
 
 app = FastAPI()
 
 GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
+
+def normalize_phone(phone: str) -> str:
+    # Elimina todos los caracteres excepto dígitos y +
+    return re.sub(r"[^\d+]", "", phone)
 
 def add_call_to_ghl(contact_id: str, call_info: dict):
     url = f"{GHL_BASE_URL}/contacts/{contact_id}/notes"
@@ -21,6 +26,7 @@ def add_call_to_ghl(contact_id: str, call_info: dict):
     return response.json()
 
 def find_contact_by_phone(phone_number: str):
+    phone_number = normalize_phone(phone_number)
     url = f"{GHL_BASE_URL}/contacts/search"
     headers = {
         "Authorization": f"Bearer {GHL_API_KEY}"
