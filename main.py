@@ -1,86 +1,74 @@
+from fastapi import FastAPI, Request, HTTPException
 import requests
-from fastapi import FastAPI, Request
-import logging
 
 app = FastAPI()
 
-logging.basicConfig(level=logging.INFO)
-
+# Configura tu API Key de GoHighLevel aquí
 GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
-GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
+GHL_API_BASE = "https://api.gohighlevel.com/v1"
 
-HEADERS_GHL = {
-    "Authorization": f"Bearer {GHL_API_KEY}",
-    "Content-Type": "application/json"
-}
+def search_contact(phone: str):
+    headers = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    params = {"phone": phone}
+    response = requests.get(f"{GHL_API_BASE}/contacts/search", headers=headers, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        contacts = data.get("contacts", [])
+        if contacts:
+            return contacts[0]["id"]
+    return None
 
-def find_or_create_lead(phone_number: str):
-    logging.info(f"Buscando lead con teléfono: {phone_number}")
-    url = f"{GHL_BASE_URL}/contacts/?phone={phone_number}"
-    r = requests.get(url, headers=HEADERS_GHL)
-    data = r.json()
-    logging.info(f"Respuesta búsqueda lead: {data}")
-    
-    if data.get("contacts"):
-        logging.info(f"Lead encontrado: {data['contacts'][0].get('id')}")
-        return data["contacts"][0]
-    else:
-        payload = {
-            "phone": phone_number,
-            "firstName": "Desconocido"
-        }
-        r = requests.post(f"{GHL_BASE_URL}/contacts/", headers=HEADERS_GHL, json=payload)
-        data = r.json()
-        logging.info(f"Lead creado: {data}")
-        return data
-
-def create_call_activity(lead_id: str, call_data: dict):
-    logging.info(f"Creando actividad de llamada para lead_id={lead_id} con datos: {call_data}")
+def create_note(contact_id: str, content: str):
+    headers = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json"
+    }
     payload = {
-        "leadId": lead_id,
-        "type": "call",
-        "duration": call_data.get("duration"),
-        "callStatus": "answered" if call_data.get("answered") else "missed",
-        "recordingUrl": call_data.get("recording_url"),
-        "user": call_data.get("user"),
-        "phone": call_data.get("phone_number")
+        "contactId": contact_id,
+        "note": content
     }
-    r = requests.post(f"{GHL_BASE_URL}/activities/", headers=HEADERS_GHL, json=payload)
-    data = r.json()
-    logging.info(f"Actividad creada: {data}")
-    return data
+    response = requests.post(f"{GHL_API_BASE}/notes", headers=headers, json=payload)
+    return response.status_code == 201
 
-@app.post("/webhook")
+@app.post("/webhook/aircall")
 async def aircall_webhook(request: Request):
-    payload = await request.json()
-    logging.info(f"Webhook recibido con payload: {payload}")
-    
-    call = payload.get("data", {})
-    
-    phone_number = call.get("raw_digits")  # número llamante según el ejemplo
-    user = call.get("user", {}).get("name", "Desconocido")
+    data = await request.json()
+    call = data.get("call")
+    if not call:
+        raise HTTPException(status_code=400, detail="No se encontró información de llamada")
+
+    # Extraer info de la llamada
+    phone = call.get("number")
     duration = call.get("duration", 0)
-    recording_url = call.get("recording")
-    answered = True if call.get("status") == "done" else False
-    
-    if not phone_number:
-        logging.warning("Número no encontrado en el webhook")
-        return {"error": "Número no encontrado en el webhook"}
-    
-    lead = find_or_create_lead(phone_number)
-    lead_id = lead.get("id")
-    
-    call_data = {
-        "duration": duration,
-        "answered": answered,
-        "recording_url": recording_url,
-        "user": user,
-        "phone_number": phone_number
-    }
-    activity = create_call_activity(lead_id, call_data)
-    
-    return {
-        "message": "Llamada registrada en GHL",
-        "lead_id": lead_id,
-        "activity": activity
-    }
+    answered = call.get("answered", False)
+    user = call.get("user", {}).get("name", "Desconocido")
+    recording_url = call.get("recording", {}).get("url", "No disponible")
+
+    if not phone:
+        raise HTTPException(status_code=400, detail="No se encontró número de teléfono en la llamada")
+
+    # Buscar contacto en GHL
+    contact_id = search_contact(phone)
+    if not contact_id:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado en GoHighLevel")
+
+    # Crear contenido de la nota
+    note_content = (
+        f"Llamada Aircall:\n"
+        f"Número: {phone}\n"
+        f"Usuario: {user}\n"
+        f"Duración: {duration} segundos\n"
+        f"Atendida: {'Sí' if answered else 'No'}\n"
+        f"Grabación: {recording_url}"
+    )
+
+    # Crear nota en GHL
+    success = create_note(contact_id, note_content)
+    if not success:
+        raise HTTPException(status_code=500, detail="Error al crear nota en GoHighLevel")
+
+    return {"status": "ok", "message": "Llamada registrada correctamente"}
+
