@@ -1,40 +1,67 @@
 from fastapi import FastAPI, Request
 import requests
 import logging
-from dotenv import load_dotenv
+from datetime import datetime
+import pytz
 import os
 
 app = FastAPI()
 
-# Configura el logging para que puedas ver los logs en la consola
 logging.basicConfig(level=logging.INFO)
 
-# Reemplaza con tu API key real de GoHighLevel
 GHL_API_KEY = os.getenv("GHL_API_KEY")
 GHL_BASE_URL = os.getenv("GHL_BASE_URL")
 
-# Esta función crea o actualiza un contacto en GHL
-def create_or_update_contact(phone_number, first_name, user_name):
-    url = f"{GHL_BASE_URL}/contacts/"
+def buscar_contacto_ghl_por_telefono(phone_number: str):
+    url = f"{GHL_BASE_URL}/contacts/search"
     headers = {
-        "Authorization": GHL_API_KEY,
+        "Authorization": f"Bearer {GHL_API_KEY}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "phone": phone_number,
-        "firstName": first_name,
-        "customField": {
-            "Llamado por": user_name  # Si no tienes este custom field aún en GHL, podemos omitirlo
-        }
+    response = requests.post(url, json={"phone": phone_number}, headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        contacts = data.get("contacts", [])
+        return contacts[0] if contacts else None
+    else:
+        logging.error(f"❌ Error buscando contacto: {response.status_code} - {response.text}")
+        return None
+
+def crear_nota_llamada_en_ghl(call_data):
+    contact_phone = call_data["contact"]["phone_numbers"][0]
+    user_name = call_data["user"]["name"]
+    duration = call_data.get("duration", 0)
+    recording_url = call_data.get("recording", {}).get("url") if call_data.get("recording") else None
+    start_time = call_data["started_at"]
+
+    dt_obj = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+    formatted_time = dt_obj.astimezone(pytz.timezone("America/Mexico_City")).strftime("%d/%m/%Y %H:%M")
+
+    nota = f"""📞 Llamada atendida por {user_name} el {formatted_time}
+Duración: {duration} segundos
+Grabación: {recording_url if recording_url else 'No disponible'}"""
+
+    contacto = buscar_contacto_ghl_por_telefono(contact_phone)
+    if not contacto:
+        logging.warning("❌ Contacto no encontrado en GHL para el teléfono: %s", contact_phone)
+        return False
+
+    contact_id = contacto["id"]
+    url = f"{GHL_BASE_URL}/contacts/{contact_id}/notes"
+    headers = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json"
     }
+    response = requests.post(url, json={"body": nota}, headers=headers)
 
-    response = requests.post(url, json=payload, headers=headers)
-    logging.info("📤 Enviado a GHL: %s", payload)
-    logging.info("📥 Respuesta de GHL: %s", response.text)
+    if response.status_code == 200:
+        logging.info("✅ Nota creada en GHL para contacto %s", contact_id)
+        return True
+    else:
+        logging.error(f"❌ Error creando nota: {response.status_code} - {response.text}")
+        return False
 
-    return response.json()
-
-# Este endpoint recibe los webhooks de Aircall
 @app.post("/aircall/webhook")
 async def handle_aircall_webhook(request: Request):
     payload = await request.json()
@@ -44,22 +71,22 @@ async def handle_aircall_webhook(request: Request):
         event_type = payload.get("event")
         data = payload.get("data", {})
 
-        if event_type == "call.ended":
-            call_id = data.get("id")
-            recording_url = data.get("recording")
-            user = data.get("user", {})
-            logging.info(f"📞 Llamada terminada: ID={call_id}, URL grabación={recording_url}, Usuario={user.get('name')}")
-            # Aquí puedes hacer algo con esos datos
+        if event_type == "call.ended" and data.get("answered", False):
+            logging.info("📞 Llamada respondida, creando nota en GHL...")
+            success = crear_nota_llamada_en_ghl(data)
+            if success:
+                return {"message": "Nota creada en GHL"}
+            else:
+                return {"message": "No se encontró contacto en GHL o error al crear nota"}
 
         elif event_type == "user.connected":
             user = data
             logging.info(f"👤 Usuario conectado: {user.get('name')} - {user.get('email')}")
-            # Aquí puedes manejar datos del usuario conectado
 
         else:
             logging.info(f"🔔 Evento no manejado: {event_type}")
 
     except Exception as e:
-        logging.error(f"Error extrayendo datos: {e}")
+        logging.error(f"Error procesando webhook: {e}")
 
     return {"status": "ok"}
