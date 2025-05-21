@@ -13,20 +13,34 @@ GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9l
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
 
 
-def crear_contacto_en_ghl(phone_number, first_name):
+def crear_contacto_en_ghl(phone_number, full_name):
     url = f"{GHL_BASE_URL}/contacts/"
     headers = {
         "Authorization": f"Bearer {GHL_API_KEY}",
         "Content-Type": "application/json"
     }
+
+    # Limpia y divide el nombre completo
+    full_name = (full_name or "").strip()
+    if full_name:
+        parts = full_name.split(" ", 1)
+        first_name = parts[0]
+        last_name = parts[1] if len(parts) > 1 else ""
+    else:
+        first_name = "Contacto"
+        last_name = "Aircall"
+
     payload = {
-        "firstName": first_name or "Contacto Aircall",
+        "firstName": first_name,
+        "lastName": last_name,
         "phone": phone_number,
         "source": "Aircall"
     }
+
     try:
         response = requests.post(url, json=payload, headers=headers)
         if response.status_code in (200, 201):
+            logging.info(f"✅ Contacto creado: {first_name} {last_name}")
             return response.json().get("id")
         else:
             logging.error(f"❌ Error creando contacto: {response.status_code} - {response.text}")
@@ -114,7 +128,7 @@ Grabación: {recording_url if recording_url else 'No disponible'}"""
         logging.error(f"❌ Error creando nota: {response.status_code} - {response.text}")
         return False
 
-@app.post("/aircall/webhook")
+@router.post("/aircall/webhook")
 async def handle_aircall_webhook(request: Request):
     payload = await request.json()
     logging.info(f"📞 Payload recibido: {payload}")
@@ -124,27 +138,38 @@ async def handle_aircall_webhook(request: Request):
         data = payload.get("data", {})
 
         if event_type == "call.answered":
-            phone_number = data.get("raw_digits")
+            # 1. Obtener número
+            phone_number = data.get("raw_digits") or data.get("number", {}).get("raw") or data.get("number", {}).get("digits")
+            if not phone_number:
+                logging.warning("⚠️ No se pudo obtener el número de teléfono.")
+                return {"status": "missing phone number"}
+
+            # 2. Usuario y hora
             user = data.get("user", {})
             answered_at = data.get("answered_at")
             call_id = data.get("id")
             recording_url = data.get("recording")
 
-            # Convertir timestamp a formato legible
-            answered_time = datetime.fromtimestamp(answered_at).strftime('%Y-%m-%d %H:%M:%S')
+            answered_time = "desconocida"
+            if answered_at:
+                try:
+                    answered_time = datetime.fromtimestamp(answered_at).strftime('%Y-%m-%d %H:%M:%S')
+                except Exception as e:
+                    logging.warning(f"⚠️ No se pudo convertir la hora de respuesta: {e}")
 
-            # Obtener el ID del contacto
+            # 3. Intentar buscar contacto por teléfono
             contact_id = get_contact_id_by_phone(phone_number)
 
-            # Si no existe, lo creamos
+            # 4. Si no existe, crearlo
             if not contact_id:
                 logging.warning("⚠️ Contacto no encontrado, se intentará crear uno nuevo...")
-                first_name = data.get("contact", {}).get("first_name", "Contacto Aircall")
-                contact_id = crear_contacto_en_ghl(phone_number, first_name)
 
-            # Si después de crear, ya tenemos contact_id, agregamos nota
+                full_name = data.get("contact", {}).get("name", "").strip()
+                contact_id = crear_contacto_en_ghl(phone_number, full_name)
+
+            # 5. Si se obtuvo contacto, agregar nota
             if contact_id:
-                note_content = f"Llamada atendida por {user.get('name')} a las {answered_time}.\nID de llamada: {call_id}"
+                note_content = f"Llamada atendida por {user.get('name', 'desconocido')} a las {answered_time}.\nID de llamada: {call_id}"
                 if recording_url:
                     note_content += f"\nGrabación: {recording_url}"
                 success = add_note_to_contact(contact_id, note_content)
@@ -154,13 +179,11 @@ async def handle_aircall_webhook(request: Request):
                     logging.error("❌ Error al agregar la nota al contacto.")
             else:
                 logging.error("❌ No se pudo encontrar ni crear el contacto.")
-            
-
 
         else:
             logging.info(f"🔔 Evento no manejado: {event_type}")
 
     except Exception as e:
-        logging.error(f"Error procesando el webhook: {e}")
+        logging.error(f"❌ Error procesando el webhook: {e}")
 
     return {"status": "ok"}
