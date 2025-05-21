@@ -13,6 +13,24 @@ GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9l
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
 
 
+def crear_contacto_en_ghl(phone_number):
+    url = f"{GHL_BASE_URL}/contacts/"
+    headers = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "firstName": "Nuevo contacto",
+        "phone": phone_number,
+        "source": "Aircall"
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        return response.json().get("id")
+    else:
+        logging.error(f"❌ Error creando contacto: {response.status_code} - {response.text}")
+        return None
+
 def get_contact_id_by_phone(phone_number):
     url = f"{GHL_BASE_URL}/contacts/search"
     headers = {
@@ -112,6 +130,13 @@ async def handle_aircall_webhook(request: Request):
 
             # Obtener el ID del contacto
             contact_id = get_contact_id_by_phone(phone_number)
+
+            # Si no existe, lo creamos
+            if not contact_id:
+                logging.warning("⚠️ Contacto no encontrado, se intentará crear uno nuevo...")
+                contact_id = crear_contacto_en_ghl(phone_number)
+
+            # Si después de crear, ya tenemos contact_id, agregamos nota
             if contact_id:
                 note_content = f"Llamada atendida por {user.get('name')} a las {answered_time}.\nID de llamada: {call_id}"
                 if recording_url:
@@ -122,7 +147,8 @@ async def handle_aircall_webhook(request: Request):
                 else:
                     logging.error("❌ Error al agregar la nota al contacto.")
             else:
-                logging.warning("⚠️ Contacto no encontrado en GHL.")
+                logging.error("❌ No se pudo encontrar ni crear el contacto.")
+
 
         else:
             logging.info(f"🔔 Evento no manejado: {event_type}")
