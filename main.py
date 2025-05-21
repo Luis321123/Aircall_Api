@@ -55,13 +55,13 @@ async def aircall_webhook(request: Request):
     payload = await request.json()
     logging.info(f"Webhook recibido con payload: {payload}")
     
-    call = payload.get("call", {})
+    call = payload.get("data", {})
     
-    phone_number = call.get("from", {}).get("number") or call.get("to", {}).get("number")
-    user = call.get("from", {}).get("user", "Desconocido")
+    phone_number = call.get("raw_digits")  # número llamante según el ejemplo
+    user = call.get("user", {}).get("name", "Desconocido")
     duration = call.get("duration", 0)
-    answered = call.get("answered", False)
-    recording_url = call.get("recording", {}).get("url", "")
+    recording_url = call.get("recording")
+    answered = True if call.get("status") == "done" else False
     
     if not phone_number:
         logging.warning("Número no encontrado en el webhook")
