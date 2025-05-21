@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request, HTTPException
 
 app = FastAPI()
 
-GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
+GHL_API_KEY = "TU_API_KEY_GHL"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
 
 HEADERS_GHL = {
