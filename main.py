@@ -6,22 +6,19 @@ import phonenumbers
 
 app = FastAPI()
 
-# Configura tu API Key y URL base de GHL
+# Configuración de tu API Key y URL de GHL
 GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
 
-# Setup de logs
 logging.basicConfig(level=logging.INFO)
 
-# Normaliza un número de teléfono a formato E.164
 def normalize_phone(phone_number: str) -> str:
     try:
         parsed = phonenumbers.parse(phone_number, "US")
         return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-    except phonenumbers.NumberParseException:
-        return phone_number  # Si falla, lo deja como está
+    except Exception:
+        return phone_number
 
-# Busca un contacto por teléfono (CORREGIDO: POST en vez de GET)
 def find_contact_by_phone(phone_number: str):
     phone_number = normalize_phone(phone_number)
     url = f"{GHL_BASE_URL}/contacts/search"
@@ -37,29 +34,23 @@ def find_contact_by_phone(phone_number: str):
         return data["contacts"][0]["id"]
     return None
 
-# Webhook que recibe datos
 @app.post("/webhook")
 async def webhook(request: Request):
     try:
-        data = await request.json()
-        logging.info("Payload recibido: %s", data)
+        payload = await request.json()
+        logging.info("Payload recibido: %s", payload)
 
-        user = data.get("user")
-        if not user:
-            logging.error("Campo 'user' no encontrado en el JSON recibido.")
-            raise HTTPException(status_code=400, detail="Missing 'user' field")
-
-        phone = user.get("phone") or user.get("phone_number")
+        # Extraer el número de teléfono desde el campo correcto
+        phone = payload.get("data", {}).get("raw_digits")
         if not phone:
-            logging.error("Número de teléfono no encontrado en 'user'")
-            raise HTTPException(status_code=400, detail="Missing phone number")
+            logging.warning("No se encontró el campo 'raw_digits' en el payload")
+            raise HTTPException(status_code=400, detail="Phone number not found in payload")
 
-        # Busca contacto en GHL
         contact_id = find_contact_by_phone(phone)
         if contact_id:
-            logging.info(f"Contacto encontrado: {contact_id}")
+            logging.info(f"Contacto encontrado en GHL: {contact_id}")
         else:
-            logging.info("No se encontró contacto con ese teléfono.")
+            logging.info("No se encontró contacto con ese número.")
 
         return {"status": "ok", "contact_id": contact_id}
 
@@ -67,5 +58,5 @@ async def webhook(request: Request):
         logging.error("Error HTTP al consultar GHL: %s", str(e))
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        logging.error("Error en webhook: %s", str(e))
-        raise HTTPException(status_code=500, detail="Internal error")
+        logging.exception("Error inesperado en el webhook")
+        raise HTTPException(status_code=500, detail="Internal server error")
