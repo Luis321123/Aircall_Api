@@ -128,7 +128,7 @@ Grabación: {recording_url if recording_url else 'No disponible'}"""
         logging.error(f"❌ Error creando nota: {response.status_code} - {response.text}")
         return False
 
-@router.post("/aircall/webhook")
+@app.post("/aircall/webhook")
 async def handle_aircall_webhook(request: Request):
     payload = await request.json()
     logging.info(f"📞 Payload recibido: {payload}")
