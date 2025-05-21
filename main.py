@@ -24,9 +24,17 @@ def crear_contacto_en_ghl(phone_number):
         "phone": phone_number,
         "source": "Aircall"
     }
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 200:
-        return response.json().get("id")
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code in (200, 201):
+            return response.json().get("id")
+        else:
+            logging.error(f"❌ Error creando contacto: {response.status_code} - {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        logging.error(f"❌ Error en la solicitud HTTP: {e}")
+        return None
+
     else:
         logging.error(f"❌ Error creando contacto: {response.status_code} - {response.text}")
         return None
