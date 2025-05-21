@@ -7,3 +7,7 @@ async def aircall_webhook(request: Request):
     payload = await request.json()
     print("Webhook recibido:", payload)
     return {"message": "Webhook recibido correctamente"}
+
+@app.get("/")
+def read_root():
+    return {"status": "FastAPI corriendo correctamente en Railway 🚀"}
