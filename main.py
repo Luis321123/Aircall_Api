@@ -33,7 +33,7 @@ def create_note(contact_id: str, content: str):
     response = requests.post(f"{GHL_API_BASE}/notes", headers=headers, json=payload)
     return response.status_code == 201
 
-@app.post("/webhook/aircall")
+@app.post("/webhook")
 async def aircall_webhook(request: Request):
     data = await request.json()
     call = data.get("call")
