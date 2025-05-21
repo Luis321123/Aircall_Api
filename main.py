@@ -12,6 +12,35 @@ logging.basicConfig(level=logging.INFO)
 GHL_API_KEY = os.getenv("GHL_API_KEY")
 GHL_BASE_URL = os.getenv("GHL_BASE_URL")
 
+
+def get_contact_id_by_phone(phone_number):
+    url = f"{GHL_BASE_URL}/contacts/search"
+    headers = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "phone": phone_number
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        contacts = response.json().get('contacts', [])
+        if contacts:
+            return contacts[0].get('id')
+    return None
+
+def add_note_to_contact(contact_id, note_content):
+    url = f"{GHL_BASE_URL}/contacts/{contact_id}/notes"
+    headers = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "body": note_content
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    return response.status_code == 200
+
 def buscar_contacto_ghl_por_telefono(phone_number: str):
     url = f"{GHL_BASE_URL}/contacts/search"
     headers = {
@@ -71,22 +100,35 @@ async def handle_aircall_webhook(request: Request):
         event_type = payload.get("event")
         data = payload.get("data", {})
 
-        if event_type == "call.ended" and data.get("answered", False):
-            logging.info("📞 Llamada respondida, creando nota en GHL...")
-            success = crear_nota_llamada_en_ghl(data)
-            if success:
-                return {"message": "Nota creada en GHL"}
-            else:
-                return {"message": "No se encontró contacto en GHL o error al crear nota"}
+        if event_type == "call.answered":
+            phone_number = data.get("raw_digits")
+            user = data.get("user", {})
+            answered_at = data.get("answered_at")
+            call_id = data.get("id")
+            recording_url = data.get("recording")
 
-        elif event_type == "user.connected":
-            user = data
-            logging.info(f"👤 Usuario conectado: {user.get('name')} - {user.get('email')}")
+            # Convertir timestamp a formato legible
+            answered_time = datetime.fromtimestamp(answered_at).strftime('%Y-%m-%d %H:%M:%S')
+
+            # Obtener el ID del contacto
+            contact_id = get_contact_id_by_phone(phone_number)
+            if contact_id:
+                note_content = f"Llamada atendida por {user.get('name')} a las {answered_time}.\nID de llamada: {call_id}"
+                if recording_url:
+                    note_content += f"\nGrabación: {recording_url}"
+                success = add_note_to_contact(contact_id, note_content)
+                if success:
+                    logging.info("📝 Nota agregada exitosamente al contacto.")
+                else:
+                    logging.error("❌ Error al agregar la nota al contacto.")
+            else:
+                logging.warning("⚠️ Contacto no encontrado en GHL.")
 
         else:
             logging.info(f"🔔 Evento no manejado: {event_type}")
 
     except Exception as e:
-        logging.error(f"Error procesando webhook: {e}")
+        logging.error(f"Error procesando el webhook: {e}")
 
     return {"status": "ok"}
+
