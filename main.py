@@ -3,7 +3,6 @@ import requests
 import logging
 from datetime import datetime
 import pytz
-import os
 
 app = FastAPI()
 
@@ -20,7 +19,6 @@ def crear_contacto_en_ghl(phone_number, name):
         "Content-Type": "application/json"
     }
 
-    # Limpia y divide el nombre completo
     name = (name or "").strip()
     if name:
         parts = name.split(" ", 1)
