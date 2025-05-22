@@ -13,7 +13,7 @@ GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9l
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
 
 
-def crear_contacto_en_ghl(phone_number, full_name):
+def crear_contacto_en_ghl(phone_number, name):
     url = f"{GHL_BASE_URL}/contacts/"
     headers = {
         "Authorization": f"Bearer {GHL_API_KEY}",
@@ -21,9 +21,9 @@ def crear_contacto_en_ghl(phone_number, full_name):
     }
 
     # Limpia y divide el nombre completo
-    full_name = (full_name or "").strip()
-    if full_name:
-        parts = full_name.split(" ", 1)
+    name = (name or "").strip()
+    if name:
+        parts = name.split(" ", 1)
         first_name = parts[0]
         last_name = parts[1] if len(parts) > 1 else ""
     else:
@@ -50,22 +50,6 @@ def crear_contacto_en_ghl(phone_number, full_name):
         return None
 
 
-def get_contact_id_by_phone(phone_number):
-    url = f"{GHL_BASE_URL}/contacts/search"
-    headers = {
-        "Authorization": f"Bearer {GHL_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "phone": phone_number
-    }
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 200:
-        contacts = response.json().get('contacts', [])
-        if contacts:
-            return contacts[0].get('id')
-    return None
-
 def add_note_to_contact(contact_id, note_content):
     url = f"{GHL_BASE_URL}/contacts/{contact_id}/notes"
     headers = {
@@ -76,7 +60,7 @@ def add_note_to_contact(contact_id, note_content):
         "body": note_content
     }
     response = requests.post(url, json=payload, headers=headers)
-    return response.status_code == 200
+    return response.status_code in (200, 201)
 
 def buscar_contacto_ghl_por_telefono(phone_number: str):
     url = f"{GHL_BASE_URL}/contacts/search"
@@ -158,14 +142,14 @@ async def handle_aircall_webhook(request: Request):
                     logging.warning(f"⚠️ No se pudo convertir la hora de respuesta: {e}")
 
             # 3. Intentar buscar contacto por teléfono
-            contact_id = get_contact_id_by_phone(phone_number)
+            contact_id = buscar_contacto_ghl_por_telefono(phone_number)
 
             # 4. Si no existe, crearlo
             if not contact_id:
                 logging.warning("⚠️ Contacto no encontrado, se intentará crear uno nuevo...")
 
-                full_name = data.get("contact", {}).get("name", "").strip()
-                contact_id = crear_contacto_en_ghl(phone_number, full_name)
+                name = data.get("contact", {}).get("name", "").strip()
+                contact_id = crear_contacto_en_ghl(phone_number, name)
 
             # 5. Si se obtuvo contacto, agregar nota
             if contact_id:
