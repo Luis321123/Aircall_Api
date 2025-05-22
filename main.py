@@ -7,7 +7,7 @@ import os
 
 app = FastAPI()
 
-
+logging.basicConfig(level=logging.INFO)
 
 GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
@@ -132,7 +132,7 @@ async def handle_aircall_webhook(request: Request):
             user = data.get("user", {})
             answered_at = data.get("answered_at")
             call_id = data.get("id")
-            recording_data = data.get("recording")
+            recording_url = data.get("recording")
 
             answered_time = "desconocida"
             if answered_at:
@@ -142,30 +142,25 @@ async def handle_aircall_webhook(request: Request):
                     logging.warning(f"⚠️ No se pudo convertir la hora de respuesta: {e}")
 
             # 3. Intentar buscar contacto por teléfono
-            contacto = buscar_contacto_ghl_por_telefono(phone_number)
-            contact_id = contacto["id"] if contacto else None
+            contact_id = buscar_contacto_ghl_por_telefono(phone_number)
 
             # 4. Si no existe, crearlo
             if not contact_id:
                 logging.warning("⚠️ Contacto no encontrado, se intentará crear uno nuevo...")
+
                 name = data.get("number", {}).get("name", "").strip()
                 contact_id = crear_contacto_en_ghl(phone_number, name)
 
-            # 5. Si se obtuvo contacto, agregar nota detallada
+            # 5. Si se obtuvo contacto, agregar nota
             if contact_id:
-                call_data = {
-                    "contact": {"phone_numbers": [phone_number]},
-                    "user": {"name": user.get("name", "desconocido")},
-                    "duration": data.get("duration", 0),
-                    "recording": recording_data,
-                    "started_at": data.get("started_at", datetime.utcnow().isoformat())
-                }
-
-                success = crear_nota_llamada_en_ghl(call_data)
+                note_content = f"Llamada atendida por {user.get('name', 'desconocido')} a las {answered_time}.\nID de llamada: {call_id}"
+                if recording_url:
+                    note_content += f"\nGrabación: {recording_url}"
+                success = add_note_to_contact(contact_id, note_content)
                 if success:
-                    logging.info("📝 Nota detallada agregada exitosamente al contacto.")
+                    logging.info("📝 Nota agregada exitosamente al contacto.")
                 else:
-                    logging.error("❌ Error al agregar la nota detallada al contacto.")
+                    logging.error("❌ Error al agregar la nota al contacto.")
             else:
                 logging.error("❌ No se pudo encontrar ni crear el contacto.")
 
