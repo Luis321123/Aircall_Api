@@ -148,7 +148,7 @@ async def handle_aircall_webhook(request: Request):
             if not contact_id:
                 logging.warning("⚠️ Contacto no encontrado, se intentará crear uno nuevo...")
 
-                name = data.get("contact", {}).get("name", "").strip()
+                name = data.get("number", {}).get("name", "").strip()
                 contact_id = crear_contacto_en_ghl(phone_number, name)
 
             # 5. Si se obtuvo contacto, agregar nota
