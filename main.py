@@ -148,11 +148,18 @@ async def handle_aircall_webhook(request: Request):
                 logging.warning("⚠️ No se pudo obtener el número de teléfono.")
                 return {"status": "missing phone number"}
 
+            # Limpiar el número (opcional)
+            phone_number = phone_number.replace(" ", "").replace("-", "")
+
             # Verificar si el contacto existe en GHL
             contacto = buscar_contacto_ghl_por_telefono(phone_number)
 
             if contacto:
-                logging.info(f"✅ El contacto con número {phone_number} existe en GHL. ID: {contacto['id']}")
+                contact_id = contacto.get("id")
+                owner_id = contacto.get("ownerId") or "No asignado"
+                logging.info(f"✅ El contacto con número {phone_number} existe en GHL.")
+                logging.info(f"🆔 Contact ID: {contact_id}")
+                logging.info(f"👤 Asignado a (ownerId): {owner_id}")
             else:
                 logging.info(f"❌ El contacto con número {phone_number} NO existe en GHL.")
 
