@@ -110,6 +110,26 @@ Grabación: {recording_url if recording_url else 'No disponible'}"""
         logging.error(f"❌ Error creando nota: {response.status_code} - {response.text}")
         return False
 
+def buscar_contacto_en_ghl(phone_number: str, ghl_api_key: str) -> str:
+
+    url = f"https://rest.gohighlevel.com/v2/contacts/search?phone={phone_number}"
+    headers = {
+        "Authorization": f"Bearer {ghl_api_key}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        if data.get("contacts"):
+            return "El contacto está en GHL"
+        else:
+            return "No está"
+    else:
+        return f"Error al buscar el contacto: {response.status_code} - {response.text}"
+
+
 @app.post("/aircall/webhook")
 async def handle_aircall_webhook(request: Request):
     payload = await request.json()
@@ -120,47 +140,21 @@ async def handle_aircall_webhook(request: Request):
         data = payload.get("data", {})
 
         if event_type == "call.answered":
-            # 1. Obtener número
+            logging.info("📞 Evento 'call.answered' recibido, verificando contacto en GHL...")
+
+            # Obtener el número de teléfono
             phone_number = data.get("raw_digits") or data.get("number", {}).get("raw") or data.get("number", {}).get("digits")
             if not phone_number:
                 logging.warning("⚠️ No se pudo obtener el número de teléfono.")
                 return {"status": "missing phone number"}
 
-            # 2. Usuario y hora
-            user = data.get("user", {})
-            answered_at = data.get("answered_at")
-            call_id = data.get("id")
-            recording_url = data.get("recording")
+            # Verificar si el contacto existe en GHL
+            contacto = buscar_contacto_ghl_por_telefono(phone_number)
 
-            answered_time = "desconocida"
-            if answered_at:
-                try:
-                    answered_time = datetime.fromtimestamp(answered_at).strftime('%Y-%m-%d %H:%M:%S')
-                except Exception as e:
-                    logging.warning(f"⚠️ No se pudo convertir la hora de respuesta: {e}")
-
-            # 3. Intentar buscar contacto por teléfono
-            contact_id = buscar_contacto_ghl_por_telefono(phone_number)
-
-            # 4. Si no existe, crearlo
-            if not contact_id:
-                logging.warning("⚠️ Contacto no encontrado, se intentará crear uno nuevo...")
-
-                name = data.get("number", {}).get("name", "").strip()
-                contact_id = crear_contacto_en_ghl(phone_number, name)
-
-            # 5. Si se obtuvo contacto, agregar nota
-            if contact_id:
-                note_content = f"Llamada atendida por {user.get('name', 'desconocido')} a las {answered_time}.\nID de llamada: {call_id}"
-                if recording_url:
-                    note_content += f"\nGrabación: {recording_url}"
-                success = add_note_to_contact(contact_id, note_content)
-                if success:
-                    logging.info("📝 Nota agregada exitosamente al contacto.")
-                else:
-                    logging.error("❌ Error al agregar la nota al contacto.")
+            if contacto:
+                logging.info(f"✅ El contacto con número {phone_number} existe en GHL. ID: {contacto['id']}")
             else:
-                logging.error("❌ No se pudo encontrar ni crear el contacto.")
+                logging.info(f"❌ El contacto con número {phone_number} NO existe en GHL.")
 
         else:
             logging.info(f"🔔 Evento no manejado: {event_type}")
