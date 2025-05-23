@@ -61,12 +61,13 @@ def add_note_to_contact(contact_id, note_content):
     return response.status_code in (200, 201)
 
 def buscar_contacto_ghl_por_telefono(phone_number: str):
-    url = f"{GHL_BASE_URL}/contacts/search"
+    url = f"https://rest.gohighlevel.com/v2/contacts/search?phone={phone_number}"
     headers = {
         "Authorization": f"Bearer {GHL_API_KEY}",
         "Content-Type": "application/json"
     }
-    response = requests.post(url, json={"phone": phone_number}, headers=headers)
+
+    response = requests.get(url, headers=headers)
 
     if response.status_code == 200:
         data = response.json()
