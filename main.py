@@ -60,6 +60,26 @@ def add_note_to_contact(contact_id, note_content):
     response = requests.post(url, json=payload, headers=headers)
     return response.status_code in (200, 201)
 
+
+def buscar_contacto_ghl_por_email(email: str):
+    url = f"https://rest.gohighlevel.com/v2/contacts/search?email={email}"
+    headers = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        contacts = data.get("contacts", [])
+        return contacts[0] if contacts else None
+    else:
+        logging.error(f"❌ Error buscando contacto por email: {response.status_code} - {response.text}")
+        return None
+
+
+
 def buscar_contacto_ghl_por_telefono(phone_number: str):
     url = f"https://rest.gohighlevel.com/v2/contacts/search?phone={phone_number}"
     headers = {
@@ -141,28 +161,20 @@ async def handle_aircall_webhook(request: Request):
         data = payload.get("data", {})
 
         if event_type == "call.answered":
-            logging.info("📞 Evento 'call.answered' recibido, verificando contacto en GHL...")
+            logging.info("📞 Evento 'call.answered' recibido, verificando usuario (owner) en GHL...")
 
-            # Obtener el número de teléfono
-            phone_number = data.get("raw_digits") or data.get("number", {}).get("raw") or data.get("number", {}).get("digits")
-            if not phone_number:
-                logging.warning("⚠️ No se pudo obtener el número de teléfono.")
-                return {"status": "missing phone number"}
+            user_email = data.get("user", {}).get("email")
+            if not user_email:
+                logging.warning("⚠️ No se pudo obtener el correo del usuario.")
+                return {"status": "missing user email"}
 
-            # Limpiar el número (opcional)
-            phone_number = phone_number.replace(" ", "").replace("-", "")
-
-            # Verificar si el contacto existe en GHL
-            contacto = buscar_contacto_ghl_por_telefono(phone_number)
+            # Buscar en GHL por el email del usuario
+            contacto = buscar_contacto_ghl_por_email(user_email)
 
             if contacto:
-                contact_id = contacto.get("id")
-                owner_id = contacto.get("ownerId") or "No asignado"
-                logging.info(f"✅ El contacto con número {phone_number} existe en GHL.")
-                logging.info(f"🆔 Contact ID: {contact_id}")
-                logging.info(f"👤 Asignado a (ownerId): {owner_id}")
+                logging.info(f"✅ El usuario {user_email} está registrado en GHL. ID: {contacto['id']}")
             else:
-                logging.info(f"❌ El contacto con número {phone_number} NO existe en GHL.")
+                logging.info(f"❌ El usuario {user_email} NO está registrado en GHL.")
 
         else:
             logging.info(f"🔔 Evento no manejado: {event_type}")
