@@ -48,6 +48,28 @@ def crear_contacto_en_ghl(phone_number, name):
         return None
 
 
+def buscar_staff_por_email(email: str):
+    url = "https://rest.gohighlevel.com/v1/users/"
+    headers = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        staff_list = response.json().get("users", [])
+        for user in staff_list:
+            if user.get("email", "").lower() == email.lower():
+                return user
+        return None
+    else:
+        logging.error(f"❌ Error al obtener staff de GHL: {response.status_code} - {response.text}")
+        return None
+
+
+
+
 def add_note_to_contact(contact_id, note_content):
     url = f"{GHL_BASE_URL}/contacts/{contact_id}/notes"
     headers = {
@@ -161,20 +183,20 @@ async def handle_aircall_webhook(request: Request):
         data = payload.get("data", {})
 
         if event_type == "call.answered":
-            logging.info("📞 Evento 'call.answered' recibido, verificando usuario (owner) en GHL...")
+            logging.info("📞 Evento 'call.answered' recibido, verificando si el usuario está en Staff de GHL...")
 
             user_email = data.get("user", {}).get("email")
             if not user_email:
                 logging.warning("⚠️ No se pudo obtener el correo del usuario.")
                 return {"status": "missing user email"}
 
-            # Buscar en GHL por el email del usuario
-            contacto = buscar_contacto_ghl_por_email(user_email)
+            # Buscar en Staff
+            staff_user = buscar_staff_por_email(user_email)
 
-            if contacto:
-                logging.info(f"✅ El usuario {user_email} está registrado en GHL. ID: {contacto['id']}")
+            if staff_user:
+                logging.info(f"✅ El usuario {user_email} SÍ está registrado en Staff de GHL. ID: {staff_user.get('id')}")
             else:
-                logging.info(f"❌ El usuario {user_email} NO está registrado en GHL.")
+                logging.info(f"❌ El usuario {user_email} NO está en Staff de GHL.")
 
         else:
             logging.info(f"🔔 Evento no manejado: {event_type}")
