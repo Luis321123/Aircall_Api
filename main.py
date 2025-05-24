@@ -3,6 +3,7 @@ import requests
 import logging
 from datetime import datetime
 import pytz
+import re
 
 app = FastAPI()
 
@@ -11,6 +12,15 @@ logging.basicConfig(level=logging.INFO)
 GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
 
+
+
+def normalizar_numero(numero: str) -> str:
+    return re.sub(r'\D', '', numero)
+
+def numeros_coinciden(numero_aircall: str, numero_crm: str) -> bool:
+    n1 = normalizar_numero(numero_aircall)
+    n2 = normalizar_numero(numero_crm)
+    return n1[-10:] == n2[-10:]
 
 def crear_contacto_en_ghl(phone_number, name):
     url = f"{GHL_BASE_URL}/contacts/"
@@ -46,6 +56,22 @@ def crear_contacto_en_ghl(phone_number, name):
     except requests.exceptions.RequestException as e:
         logging.error(f"❌ Error en la solicitud HTTP: {e}")
         return None
+    
+def obtener_todos_los_contactos_ghl(limit=100):
+    url = f"https://rest.gohighlevel.com/v1/contacts?limit={limit}"
+    headers = {
+        "Authorization": f"Bearer {GHL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("contacts", [])
+    else:
+        logging.error(f"❌ Error al obtener contactos: {response.status_code} - {response.text}")
+        return []
+
 
 
 def buscar_staff_por_email(email: str):
@@ -100,10 +126,8 @@ def buscar_contacto_ghl_por_email(email: str):
         logging.error(f"❌ Error buscando contacto por email: {response.status_code} - {response.text}")
         return None
 
-
-
-def buscar_contacto_ghl_por_telefono(phone_number: str):
-    url = f"https://rest.gohighlevel.com/v1/contacts/search?phone={phone_number}"
+def buscar_contacto_ghl_por_telefono(phone_number: str, limit: int = 100):
+    url = f"https://rest.gohighlevel.com/v1/contacts/search?phone={phone_number}&limit={limit}"
     headers = {
         "Authorization": f"Bearer {GHL_API_KEY}",
         "Content-Type": "application/json"
@@ -114,10 +138,20 @@ def buscar_contacto_ghl_por_telefono(phone_number: str):
     if response.status_code == 200:
         data = response.json()
         contacts = data.get("contacts", [])
-        return contacts[0] if contacts else None
+        if contacts:
+            return contacts[0]  # Retorna el primer contacto encontrado
+        else:
+            return None
     else:
         logging.error(f"❌ Error buscando contacto: {response.status_code} - {response.text}")
         return None
+
+    
+    return None
+
+
+
+
 
 def crear_nota_llamada_en_ghl(call_data):
     contact_phone = call_data["contact"]["phone_numbers"][0]
@@ -155,7 +189,7 @@ Grabación: {recording_url if recording_url else 'No disponible'}"""
 
 def buscar_contacto_en_ghl(phone_number: str, ghl_api_key: str) -> str:
 
-    url = f"https://rest.gohighlevel.com/v2/contacts/search?phone={phone_number}"
+    url = f"https://rest.gohighlevel.com/v1/contacts/search?phone={phone_number}"
     headers = {
         "Authorization": f"Bearer {ghl_api_key}",
         "Content-Type": "application/json"
@@ -197,18 +231,30 @@ async def handle_aircall_webhook(request: Request):
             else:
                 logging.info(f"❌ Usuario {user_email} no está en el staff.")
 
-            # Obtener el número del cliente
-            client_phone = data.get("raw_digits", "").replace(" ", "")
-            if not client_phone:
-                logging.warning("⚠️ No se pudo obtener el número del cliente.")
-                return {"status": "missing client phone"}
+            # Obtener y normalizar el número del cliente
+            raw_phone = data.get("raw_digits", "")
+            client_phone_normalizado = normalizar_numero(raw_phone)
 
-            # Verificar si el cliente está en el CRM
-            contacto = buscar_contacto_ghl_por_telefono(client_phone)
-            if contacto:
-                logging.info(f"✅ Cliente con teléfono {client_phone} está registrado en el CRM.")
+            if not client_phone_normalizado:
+                logging.warning("⚠️ No se pudo obtener el número del cliente.")
+                return {"status": "missing or invalid client phone"}
+
+            # Obtener lista de contactos del CRM (podrías modificar esta función para traer varios contactos)
+            contactos = obtener_todos_los_contactos_ghl()  # Implementa esta función para obtener una lista de contactos
+
+            # Buscar contacto con número que coincida
+            contacto_encontrado = None
+            for contacto in contactos:
+                # Suponiendo que el contacto tiene un campo 'phone'
+                numero_crm = contacto.get("phone", "")
+                if numero_crm and numeros_coinciden(client_phone_normalizado, numero_crm):
+                    contacto_encontrado = contacto
+                    break
+
+            if contacto_encontrado:
+                logging.info(f"✅ Cliente con teléfono {client_phone_normalizado} está registrado en el CRM.")
             else:
-                logging.info(f"❌ Cliente con teléfono {client_phone} no está registrado en el CRM.")
+                logging.info(f"❌ Cliente con teléfono {client_phone_normalizado} no está registrado en el CRM.")
 
         else:
             logging.info(f"🔔 Evento no manejado: {event_type}")
