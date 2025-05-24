@@ -84,7 +84,7 @@ def add_note_to_contact(contact_id, note_content):
 
 
 def buscar_contacto_ghl_por_email(email: str):
-    url = f"https://rest.gohighlevel.com/v2/contacts/search?email={email}"
+    url = f"https://rest.gohighlevel.com/v1/contacts/search?email={email}"
     headers = {
         "Authorization": f"Bearer {GHL_API_KEY}",
         "Content-Type": "application/json"
