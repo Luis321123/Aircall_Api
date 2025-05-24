@@ -183,20 +183,32 @@ async def handle_aircall_webhook(request: Request):
         data = payload.get("data", {})
 
         if event_type == "call.answered":
-            logging.info("📞 Evento 'call.answered' recibido, verificando si el usuario está en Staff de GHL...")
+            logging.info("📞 Evento 'call.answered' recibido.")
 
             user_email = data.get("user", {}).get("email")
             if not user_email:
                 logging.warning("⚠️ No se pudo obtener el correo del usuario.")
                 return {"status": "missing user email"}
 
-            # Buscar en Staff
+            # Verificar si el usuario está en el staff
             staff_user = buscar_staff_por_email(user_email)
-
             if staff_user:
-                logging.info(f"✅ El usuario {user_email} SÍ está registrado en Staff de GHL. ID: {staff_user.get('id')}")
+                logging.info(f"✅ Usuario {user_email} está en el staff.")
             else:
-                logging.info(f"❌ El usuario {user_email} NO está en Staff de GHL.")
+                logging.info(f"❌ Usuario {user_email} no está en el staff.")
+
+            # Obtener el número del cliente
+            client_phone = data.get("raw_digits", "").replace(" ", "")
+            if not client_phone:
+                logging.warning("⚠️ No se pudo obtener el número del cliente.")
+                return {"status": "missing client phone"}
+
+            # Verificar si el cliente está en el CRM
+            contacto = buscar_contacto_ghl_por_telefono(client_phone)
+            if contacto:
+                logging.info(f"✅ Cliente con teléfono {client_phone} está registrado en el CRM.")
+            else:
+                logging.info(f"❌ Cliente con teléfono {client_phone} no está registrado en el CRM.")
 
         else:
             logging.info(f"🔔 Evento no manejado: {event_type}")
@@ -205,3 +217,4 @@ async def handle_aircall_webhook(request: Request):
         logging.error(f"❌ Error procesando el webhook: {e}")
 
     return {"status": "ok"}
+
