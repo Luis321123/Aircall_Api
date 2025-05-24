@@ -103,7 +103,7 @@ def buscar_contacto_ghl_por_email(email: str):
 
 
 def buscar_contacto_ghl_por_telefono(phone_number: str):
-    url = f"https://rest.gohighlevel.com/v2/contacts/search?phone={phone_number}"
+    url = f"https://rest.gohighlevel.com/v1/contacts/search?phone={phone_number}"
     headers = {
         "Authorization": f"Bearer {GHL_API_KEY}",
         "Content-Type": "application/json"
