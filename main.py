@@ -13,6 +13,11 @@ GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9l
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
 
 
+HEADERS = {
+    "Authorization": f"Bearer {GHL_API_KEY}",
+    "Content-Type": "application/json"
+}
+
 
 def normalizar_numero(numero: str) -> str:
     return re.sub(r'\D', '', numero)
@@ -126,28 +131,39 @@ def buscar_contacto_ghl_por_email(email: str):
         logging.error(f"❌ Error buscando contacto por email: {response.status_code} - {response.text}")
         return None
 
-def buscar_contacto_ghl_por_telefono(phone_number: str, limit: int = 100):
-    url = f"https://rest.gohighlevel.com/v1/contacts/search?phone={phone_number}&limit={limit}"
-    headers = {
-        "Authorization": f"Bearer {GHL_API_KEY}",
-        "Content-Type": "application/json"
-    }
+def buscar_contacto_ghl_por_telefono(numero_busqueda: str):
+    per_page = 100
+    start_after_id = None
 
-    response = requests.get(url, headers=headers)
+    while True:
+        params = {"limit": per_page}
+        if start_after_id:
+            params["startAfterId"] = start_after_id
 
-    if response.status_code == 200:
+        response = requests.get(GHL_BASE_URL, headers=HEADERS, params=params)
+
+        if response.status_code != 200:
+            logging.error(f"❌ Error al obtener contactos de GHL: {response.text}")
+            break
+
         data = response.json()
-        contacts = data.get("contacts", [])
-        if contacts:
-            return contacts[0]  # Retorna el primer contacto encontrado
-        else:
-            return None
-    else:
-        logging.error(f"❌ Error buscando contacto: {response.status_code} - {response.text}")
-        return None
+        contactos = data.get("contacts", [])
 
-    
-    return None
+        if not contactos:
+            break  # No hay más contactos
+
+        for contacto in contactos:
+            telefono_contacto = contacto.get("phone")
+            if telefono_contacto:
+                logging.info(f"🔍 Comparando {numero_busqueda} con {telefono_contacto}")
+                if numeros_coinciden(numero_busqueda, telefono_contacto):
+                    logging.info(f"✅ Coincidencia encontrada con {telefono_contacto}")
+                    return contacto  # Match encontrado
+
+        # Preparar para la siguiente página
+        start_after_id = contactos[-1].get("id")
+
+    return None  # No se encontró coincidencia
 
 
 
