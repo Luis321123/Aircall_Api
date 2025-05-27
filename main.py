@@ -11,10 +11,11 @@ logging.basicConfig(level=logging.INFO)
 
 GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1"
+GHL_OAUTH_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdXRoQ2xhc3MiOiJMb2NhdGlvbiIsImF1dGhDbGFzc0lkIjoiazdSb2VRS1QwNk9kdjhSb0ZPamciLCJzb3VyY2UiOiJJTlRFR1JBVElPTiIsInNvdXJjZUlkIjoiNjgzNWVhNWU0ZTFlMzM0NDljNTExMzljLW1iNnZuM3l2IiwiY2hhbm5lbCI6Ik9BVVRIIiwicHJpbWFyeUF1dGhDbGFzc0lkIjoiazdSb2VRS1QwNk9kdjhSb0ZPamciLCJvYXV0aE1ldGEiOnsic2NvcGVzIjpbImNvbnRhY3RzLnJlYWRvbmx5IiwiY29udGFjdHMud3JpdGUiXSwiY2xpZW50IjoiNjgzNWVhNWU0ZTFlMzM0NDljNTExMzljIiwidmVyc2lvbklkIjoiNjgzNWVhNWU0ZTFlMzM0NDljNTExMzljIiwiY2xpZW50S2V5IjoiNjgzNWVhNWU0ZTFlMzM0NDljNTExMzljLW1iNnZuM3l2In0sImlhdCI6MTc0ODM3NTg4MS42NDUsImV4cCI6MTc0ODQ2MjI4MS42NDV9.JYhphBUZyNMK2Wya9EXzzVGtsG2DY1Pbxhru-V5w5xTHUqQsq4CCXbAs7Lkd0DBM-IqkzBRE1SvWmbHZeJkKV4TdIrYOGTyBupn0PKBakDfKr_5aC-lH9p-fnvC5xjB_yiU3ckaJ4bb7Beq847gwWriGyHyNciBwnsM5mu4NFA1xytwJ87IMKWno_cLjo9DufVzz57wflgddi6RBg4Y3yuKfHz2wf_VpePQO9yWdHT8NwpTV6K5uvdvaa8cYNPM1_MvqFJJfU8e918BTDf4raON1MfNUu-nDPm90X7kx1Bu6v9UrNau1CmT4eMo2xF3F1D_lgQX6MIiWE17vArhz0HKDOzmKVNFnMqxIzmcPvDeqEHui3TrYxi1hePuw4mLePF1upKs2NTqguitVGjPKROnWW-wqGwMiCHlBJ9_WkuySFbfzuYD08usANYVjBV5eJTq53Uy8T-uWrFM_Y2chDnZUd3ii6sJiRr1OyVUMrhd_Kys0cA-4mcG8f8lhnVVWz4dpaSimQXOPrh0J5KZTHvYN4Fmr4m48c6Y_moAf-suwgSEIFFC3jHkmgrflRDKqHjVq_D8vNnBNFgLyCeIwvC6_7s84l9gzTRAoakyVZ1KMz2NUzDZOHeLqU054qeCzptwPBzG-fheppeVO8LFors71Orwm07tuD0MN5b1wkyI"  # el token que obtuviste vía OAuth2
+GHL_BASE_URL_V2 = "https://api.gohighlevel.com/v2"
 
-
-HEADERS = {
-    "Authorization": f"Bearer {GHL_API_KEY}",
+HEADERS_V2 = {
+    "Authorization": f"Bearer {GHL_OAUTH_TOKEN}",
     "Content-Type": "application/json"
 }
 
@@ -77,8 +78,6 @@ def obtener_todos_los_contactos_ghl(limit=100):
         logging.error(f"❌ Error al obtener contactos: {response.status_code} - {response.text}")
         return []
 
-
-
 def buscar_staff_por_email(email: str):
     url = "https://rest.gohighlevel.com/v1/users/"
     headers = {
@@ -97,9 +96,6 @@ def buscar_staff_por_email(email: str):
     else:
         logging.error(f"❌ Error al obtener staff de GHL: {response.status_code} - {response.text}")
         return None
-
-
-
 
 def add_note_to_contact(contact_id, note_content):
     url = f"{GHL_BASE_URL}/contacts/{contact_id}/notes"
@@ -120,7 +116,6 @@ def buscar_contacto_ghl_por_email(email: str):
         "Authorization": f"Bearer {GHL_API_KEY}",
         "Content-Type": "application/json"
     }
-
     response = requests.get(url, headers=headers)
 
     if response.status_code == 200:
@@ -165,10 +160,6 @@ def buscar_contacto_ghl_por_telefono(numero_busqueda: str):
 
     return None  # No se encontró coincidencia
 
-
-
-
-
 def crear_nota_llamada_en_ghl(call_data):
     contact_phone = call_data["contact"]["phone_numbers"][0]
     user_name = call_data["user"]["name"]
@@ -203,80 +194,53 @@ Grabación: {recording_url if recording_url else 'No disponible'}"""
         logging.error(f"❌ Error creando nota: {response.status_code} - {response.text}")
         return False
 
-def buscar_contacto_en_ghl(phone_number: str, ghl_api_key: str) -> str:
+def normalizar_numero(numero: str) -> str:
+    """Quita todo menos dígitos y devuelve los últimos 10."""
+    dígitos = re.sub(r'\D', '', numero)
+    return dígitos[-10:]
 
-    url = f"https://rest.gohighlevel.com/v1/contacts/search?phone={phone_number}"
-    headers = {
-        "Authorization": f"Bearer {ghl_api_key}",
-        "Content-Type": "application/json"
-    }
-
-    response = requests.get(url, headers=headers)
-
-    if response.status_code == 200:
-        data = response.json()
-        if data.get("contacts"):
-            return "El contacto está en GHL"
+def buscar_contacto_por_telefono_v2(numero_busqueda: str):
+    """
+    Usa el endpoint v2 para buscar un contacto por teléfono.
+    Devuelve el objeto contacto o None si no existe.
+    """
+    payload = {"phone": normalizar_numero(numero_busqueda)}
+    resp = requests.post(f"{GHL_BASE_URL_V2}/contacts/search",
+                         headers=HEADERS_V2,
+                         json=payload)
+    if resp.status_code == 200:
+        data = resp.json()
+        contactos = data.get("contacts", [])
+        if contactos:
+            logging.info(f"✅ Contacto encontrado en v2: {contactos[0]['phone']}")
+            return contactos[0]
         else:
-            return "No está"
+            logging.info("🔍 No hay coincidencias en v2")
+            return None
     else:
-        return f"Error al buscar el contacto: {response.status_code} - {response.text}"
-
+        logging.error(f"❌ Error v2 search: {resp.status_code} {resp.text}")
+        return None
 
 @app.post("/aircall/webhook")
 async def handle_aircall_webhook(request: Request):
     payload = await request.json()
     logging.info(f"📞 Payload recibido: {payload}")
 
-    try:
-        event_type = payload.get("event")
-        data = payload.get("data", {})
+    if payload.get("event") != "call.answered":
+        logging.info("🔔 Evento no manejado.")
+        return {"status": "ok"}
 
-        if event_type == "call.answered":
-            logging.info("📞 Evento 'call.answered' recibido.")
+    data = payload["data"]
+    raw = data.get("raw_digits", "")
+    cliente_tel = normalizar_numero(raw)
+    if not cliente_tel:
+        logging.warning("⚠️ Número cliente inválido.")
+        return {"status": "missing phone"}
 
-            user_email = data.get("user", {}).get("email")
-            if not user_email:
-                logging.warning("⚠️ No se pudo obtener el correo del usuario.")
-                return {"status": "missing user email"}
-
-            # Verificar si el usuario está en el staff
-            staff_user = buscar_staff_por_email(user_email)
-            if staff_user:
-                logging.info(f"✅ Usuario {user_email} está en el staff.")
-            else:
-                logging.info(f"❌ Usuario {user_email} no está en el staff.")
-
-            # Obtener y normalizar el número del cliente
-            raw_phone = data.get("raw_digits", "")
-            client_phone_normalizado = normalizar_numero(raw_phone)
-
-            if not client_phone_normalizado:
-                logging.warning("⚠️ No se pudo obtener el número del cliente.")
-                return {"status": "missing or invalid client phone"}
-
-            # Obtener lista de contactos del CRM (podrías modificar esta función para traer varios contactos)
-            contactos = obtener_todos_los_contactos_ghl()  # Implementa esta función para obtener una lista de contactos
-
-            # Buscar contacto con número que coincida
-            contacto_encontrado = None
-            for contacto in contactos:
-                # Suponiendo que el contacto tiene un campo 'phone'
-                numero_crm = contacto.get("phone", "")
-                if numero_crm and numeros_coinciden(client_phone_normalizado, numero_crm):
-                    contacto_encontrado = contacto
-                    break
-
-            if contacto_encontrado:
-                logging.info(f"✅ Cliente con teléfono {client_phone_normalizado} está registrado en el CRM.")
-            else:
-                logging.info(f"❌ Cliente con teléfono {client_phone_normalizado} no está registrado en el CRM.")
-
-        else:
-            logging.info(f"🔔 Evento no manejado: {event_type}")
-
-    except Exception as e:
-        logging.error(f"❌ Error procesando el webhook: {e}")
+    contacto = buscar_contacto_por_telefono_v2(cliente_tel)
+    if contacto:
+        logging.info(f"✅ Cliente {cliente_tel} existe en CRM (v2). ID: {contacto['id']}")
+    else:
+        logging.info(f"❌ Cliente {cliente_tel} NO existe en CRM (v2).")
 
     return {"status": "ok"}
-
