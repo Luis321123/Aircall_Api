@@ -16,7 +16,7 @@ app = FastAPI()
 # 🔐 API Key de GoHighLevel
 GHL_API_KEY = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1/contacts/"
-MAX_CONCURRENT_REQUESTS = 3  # Limita las solicitudes paralelas
+MAX_CONCURRENT_REQUESTS = 1  # Limita las solicitudes paralelas
 
 # 🧼 Normaliza números (ej. +1 555-123-4567 -> 15551234567)
 def normalize_phone(phone: str) -> str:
