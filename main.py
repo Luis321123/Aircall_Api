@@ -4,6 +4,8 @@ import re
 import logging
 import asyncio
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 # ⚙️ Configuración del logger
 logging.basicConfig(
     level=logging.INFO,
@@ -53,19 +55,24 @@ async def find_contact_by_phone(normalized_number: str) -> str:
     async with httpx.AsyncClient() as client:
         tasks = [asyncio.create_task(search_page(client, page, normalized_number, sem)) for page in range(1, 61)]
 
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        while tasks:
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
-        for task in pending:
-            task.cancel()  # Cancelamos tareas pendientes
+            for task in done:
+                result = task.result()
+                if result:
+                    logger.info(f"✅ Contacto encontrado: ID={result['id']} | Tel={result['phone']}")
+                    # Cancelar tareas restantes
+                    for pending_task in pending:
+                        pending_task.cancel()
+                    return f"OK - ID: {result['id']}"
 
-        for task in done:
-            result = task.result()
-            if result:
-                logger.info(f"✅ Contacto encontrado: ID={result['id']} | Tel={result['phone']}")
-                return f"OK - ID: {result['id']}"
+            # Continuar con las tareas pendientes
+            tasks = list(pending)
 
     logger.info("❌ Contacto no encontrado")
     return "NOT FOUND"
+
 
 # 📞 Webhook Aircall
 @app.post("/webhook/aircall")
