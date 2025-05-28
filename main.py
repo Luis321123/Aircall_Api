@@ -4,7 +4,7 @@ import re
 import logging
 import asyncio
 
-# ⚙️ Logger (nivel INFO)
+# Logger (nivel INFO)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -14,16 +14,16 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 app = FastAPI()
 
-# 🔐 Configuración
+#  Configuración
 GHL_API_KEY = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1/contacts/"
 MAX_CONCURRENT_REQUESTS = 1
 
-# 🧼 Normaliza números
+#  Normaliza números
 def normalize_phone(phone: str) -> str:
     return re.sub(r"[^\d]", "", phone)
 
-# 🔍 Búsqueda por página
+#  Búsqueda por página
 async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
     async with sem:
         try:
@@ -46,7 +46,7 @@ async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
             pass
     return None
 
-# 🔍 Busca contacto con resumen al final
+#  Busca contacto con resumen al final
 async def find_contact_by_phone(normalized_number: str) -> str:
     logger.info(f"🔎 Buscando contacto con número: {normalized_number}")
     sem = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
@@ -70,13 +70,13 @@ async def find_contact_by_phone(normalized_number: str) -> str:
     logger.info(f"❌ Número no encontrado: {normalized_number}")
     return "NOT FOUND"
 
-# 📞 Webhook Aircall
+#  Webhook Aircall
 @app.post("/webhook/aircall")
 async def handle_aircall_webhook(request: Request):
     body = await request.json()
 
-    if body.get("event") != "call.answered":
-        return {"status": "IGNORED", "detail": "No es una llamada respondida"}
+    if body.get("event") != "call.ended":
+        return {"status": "IGNORED", "detail": "No es una llamada finalizada"}
 
     raw_phone = body.get("data", {}).get("raw_digits")
     if not raw_phone:
