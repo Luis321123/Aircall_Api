@@ -4,26 +4,26 @@ import re
 import logging
 import asyncio
 
-# ⚙️ Configuración del logger (nivel INFO, sin logs de httpx)
+# ⚙️ Logger (solo INFO, silencia httpx)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
-logging.getLogger("httpx").setLevel(logging.WARNING)  # Oculta logs de httpx
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 app = FastAPI()
 
-# 🔐 Configuración API
+# 🔐 Configuración
 GHL_API_KEY = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1/contacts/"
 MAX_CONCURRENT_REQUESTS = 1
 
-# 🧼 Normaliza el número telefónico
+# 🧼 Normaliza números
 def normalize_phone(phone: str) -> str:
     return re.sub(r"[^\d]", "", phone)
 
-# 🔍 Buscar contacto en una sola página
+# 🔍 Búsqueda por página
 async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
     async with sem:
         try:
@@ -46,8 +46,9 @@ async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
             pass
     return None
 
-# 🔍 Buscar contacto completo
+# 🔍 Busca contacto con cancelación temprana
 async def find_contact_by_phone(normalized_number: str) -> str:
+    logger.info(f"🔎 Buscando contacto con número: {normalized_number}")
     sem = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
     async with httpx.AsyncClient() as client:
@@ -74,13 +75,12 @@ async def find_contact_by_phone(normalized_number: str) -> str:
 async def handle_aircall_webhook(request: Request):
     body = await request.json()
 
-    # Solo proceder si es un evento de llamada respondida
     if body.get("event") != "call.answered":
-        return {"status": "IGNORED", "detail": "No es un evento de llamada respondida"}
+        return {"status": "IGNORED", "detail": "No es una llamada respondida"}
 
     raw_phone = body.get("data", {}).get("raw_digits")
     if not raw_phone:
-        return {"status": "ERROR", "detail": "No se recibió número de teléfono"}
+        return {"status": "ERROR", "detail": "Número de teléfono no presente"}
 
     normalized_number = normalize_phone(raw_phone)
     result = await find_contact_by_phone(normalized_number)
