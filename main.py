@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # 🔐 API Key de GoHighLevel
-GHL_API_KEY = "Bearer TU_API_KEY_AQUI"
+GHL_API_KEY = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1/contacts/"
 
 # 🧼 Normaliza números (ej. +1 555-123-4567 -> 15551234567)
@@ -50,7 +50,7 @@ async def find_contact_by_phone(normalized_number: str) -> str:
                     normalized_contact_phone = normalize_phone(contact_phone)
                     if normalized_contact_phone.endswith(normalized_number) or normalized_number.endswith(normalized_contact_phone):
                         logger.info(f"✅ Contacto encontrado: ID={contact['id']} | Tel={contact_phone}")
-                        return "OK"
+                        return f"OK - ID: {contact['id']}"
 
     logger.info("❌ Contacto no encontrado")
     return "NOT FOUND"
@@ -61,15 +61,19 @@ async def handle_aircall_webhook(request: Request):
     body = await request.json()
     logger.info(f"📩 Webhook recibido: {body}")
 
-    raw_phone = body.get("call", {}).get("from_number")
+    try:
+        raw_phone = body.get("data", {}).get("raw_digits")
+        if not raw_phone:
+            logger.error("📛 'raw_digits' no encontrado en 'data'")
+            return {"status": "ERROR", "detail": "No se recibió número de teléfono"}
 
-    if not raw_phone:
-        logger.error("📛 Número de teléfono no encontrado en la petición")
-        return {"status": "ERROR", "detail": "No se recibió número de teléfono"}
+        normalized_number = normalize_phone(raw_phone)
+        logger.info(f"📲 Número recibido: {raw_phone} | Normalizado: {normalized_number}")
 
-    normalized_number = normalize_phone(raw_phone)
-    logger.info(f"📲 Número recibido: {raw_phone} | Normalizado: {normalized_number}")
+        result = await find_contact_by_phone(normalized_number)
+        logger.info(f"🧪 Resultado final: {result}")
+        return {"status": result}
 
-    result = await find_contact_by_phone(normalized_number)
-    logger.info(f"🧪 Resultado final: {result}")
-    return {"status": result}
+    except Exception as e:
+        logger.exception(f"❌ Error procesando el webhook: {e}")
+        return {"status": "ERROR", "detail": str(e)}
