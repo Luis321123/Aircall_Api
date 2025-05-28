@@ -4,7 +4,7 @@ import re
 import logging
 import asyncio
 
-# ⚙️ Logger (solo INFO, silencia httpx)
+# ⚙️ Logger (nivel INFO)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -46,7 +46,7 @@ async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
             pass
     return None
 
-# 🔍 Busca contacto con cancelación temprana
+# 🔍 Busca contacto con resumen al final
 async def find_contact_by_phone(normalized_number: str) -> str:
     logger.info(f"🔎 Buscando contacto con número: {normalized_number}")
     sem = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
@@ -62,12 +62,12 @@ async def find_contact_by_phone(normalized_number: str) -> str:
                 if result:
                     for pending_task in pending:
                         pending_task.cancel()
-                    logger.info(f"✅ Contacto encontrado: ID={result['id']} | Tel={result['phone']}")
+                    logger.info(f"✅ Contacto encontrado: Número {normalized_number} | ID={result['id']} | Tel={result['phone']}")
                     return f"OK - ID: {result['id']}"
 
             tasks = list(pending)
 
-    logger.info("❌ Contacto no encontrado")
+    logger.info(f"❌ Número no encontrado: {normalized_number}")
     return "NOT FOUND"
 
 # 📞 Webhook Aircall
