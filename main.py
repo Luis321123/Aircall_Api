@@ -23,6 +23,26 @@ MAX_CONCURRENT_REQUESTS = 1
 def normalize_phone(phone: str) -> str:
     return re.sub(r"[^\d]", "", phone)
 
+# Agrega nota a un contacto
+async def add_note_to_contact(contact_id: str, note: str):
+    url = f"{GHL_BASE_URL}{contact_id}/notes"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                url,
+                headers={
+                    "Authorization": GHL_API_KEY,
+                    "Content-Type": "application/json"
+                },
+                json={"body": note}
+            )
+            if response.status_code == 200:
+                logger.info(f"📝 Nota agregada al contacto {contact_id}")
+            else:
+                logger.warning(f"⚠️ Error al agregar nota: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"❌ Excepción al agregar nota: {str(e)}")
+
 # Busca contactos por página
 async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
     async with sem:
@@ -46,28 +66,8 @@ async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
             pass
     return None
 
-# Agrega nota a un contacto
-async def add_note_to_contact(contact_id: str, note: str):
-    url = f"{GHL_BASE_URL}{contact_id}/notes"
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                url,
-                headers={
-                    "Authorization": GHL_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={"body": note}
-            )
-            if response.status_code == 200:
-                logger.info(f"📝 Nota agregada al contacto {contact_id}")
-            else:
-                logger.warning(f"⚠️ Error al agregar nota: {response.status_code} - {response.text}")
-        except Exception as e:
-            logger.error(f"❌ Excepción al agregar nota: {str(e)}")
-
-# Busca contacto y le agrega una nota si se encuentra
-async def find_contact_by_phone(normalized_number: str) -> str:
+# Busca contacto y agrega una nota enriquecida
+async def find_contact_and_add_note(normalized_number: str, note: str) -> str:
     logger.info(f"🔎 Buscando contacto con número: {normalized_number}")
     sem = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
@@ -78,16 +78,16 @@ async def find_contact_by_phone(normalized_number: str) -> str:
             for completed_task in asyncio.as_completed(tasks):
                 result = await completed_task
                 if result:
-                    # Cancelar tareas restantes
                     for task in tasks:
                         if not task.done():
                             task.cancel()
+
                     contact_id = result["id"]
                     phone = result.get("phone", "")
                     logger.info(f"✅ Contacto encontrado: ID={contact_id} | Tel={phone}")
 
-                    # Agregar nota
-                    await add_note_to_contact(contact_id, f"Llamada registrada desde Aircall para el número {normalized_number}")
+                    # Agregar nota enriquecida
+                    await add_note_to_contact(contact_id, note)
 
                     return f"OK - ID: {contact_id}"
         except Exception as e:
@@ -96,7 +96,7 @@ async def find_contact_by_phone(normalized_number: str) -> str:
     logger.info(f"❌ Número no encontrado: {normalized_number}")
     return "NOT FOUND"
 
-# Webhook de Aircall
+# Webhook de Aircall enriquecido
 @app.post("/webhook/aircall")
 async def handle_aircall_webhook(request: Request):
     body = await request.json()
@@ -109,5 +109,20 @@ async def handle_aircall_webhook(request: Request):
         return {"status": "ERROR", "detail": "Número de teléfono no presente"}
 
     normalized_number = normalize_phone(raw_phone)
-    result = await find_contact_by_phone(normalized_number)
+
+    # Datos adicionales para la nota
+    agent = body.get("data", {}).get("user", {}).get("name", "Desconocido")
+    answered = "Sí" if body.get("data", {}).get("answered") else "No"
+    duration = body.get("data", {}).get("duration", 0)
+    recording_url = body.get("data", {}).get("recordings", [{}])[0].get("url", "No disponible")
+
+    nota = (
+        f"📞 Llamada registrada desde Aircall\n"
+        f"👤 Agente: {agent}\n"
+        f"✅ Atendida: {answered}\n"
+        f"⏱️ Duración: {duration} segundos\n"
+        f"🎙️ Grabación: {recording_url}"
+    )
+
+    result = await find_contact_and_add_note(normalized_number, nota)
     return {"status": result}
