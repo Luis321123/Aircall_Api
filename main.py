@@ -2,7 +2,9 @@ from fastapi import FastAPI, Request
 import httpx
 import re
 import logging
+from datetime import datetime
 import asyncio
+from zoneinfo import ZoneInfo
 
 # Logger
 logging.basicConfig(
@@ -24,24 +26,25 @@ def normalize_phone(phone: str) -> str:
     return re.sub(r"[^\d]", "", phone)
 
 # Agrega nota a un contacto
-async def add_note_to_contact(contact_id: str, note: str):
-    url = f"{GHL_BASE_URL}{contact_id}/notes"
+async def add_note_to_contact(contact_id: str, description: str):
+    colombia_time = datetime.now(ZoneInfo("America/Bogota")).strftime("%Y-%m-%d %H:%M:%S")
+    note_text = f"{description}\n🕒 Guardado el {colombia_time} (hora Colombia)"
+
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                url,
-                headers={
-                    "Authorization": GHL_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={"body": note}
-            )
-            if response.status_code == 200:
-                logger.info(f"📝 Nota agregada al contacto {contact_id}")
-            else:
-                logger.warning(f"⚠️ Error al agregar nota: {response.status_code} - {response.text}")
-        except Exception as e:
-            logger.error(f"❌ Excepción al agregar nota: {str(e)}")
+        response = await client.post(
+            f"https://rest.gohighlevel.com/v1/contacts/{contact_id}/notes/",
+            headers={
+                "Authorization": GHL_API_KEY,
+                "Content-Type": "application/json",
+            },
+            json={
+                "body": note_text
+            }
+        )
+        if response.status_code == 200:
+            logger.info(f"📝 Nota agregada al contacto {contact_id}")
+        else:
+            logger.error(f"❌ Error al agregar nota: {response.status_code} - {response.text}")
 
 # Busca contactos por página
 async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
@@ -67,34 +70,28 @@ async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
     return None
 
 # Busca contacto y agrega una nota enriquecida
-async def find_contact_and_add_note(normalized_number: str, note: str) -> str:
-    logger.info(f"🔎 Buscando contacto con número: {normalized_number}")
+async def find_contact_by_phone(normalized_number: str) -> str:
     sem = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-
     async with httpx.AsyncClient() as client:
         tasks = [asyncio.create_task(search_page(client, page, normalized_number, sem)) for page in range(1, 61)]
-
         try:
             for completed_task in asyncio.as_completed(tasks):
                 result = await completed_task
                 if result:
+                    # Cancelar tareas restantes
                     for task in tasks:
                         if not task.done():
                             task.cancel()
-
-                    contact_id = result["id"]
-                    phone = result.get("phone", "")
-                    logger.info(f"✅ Contacto encontrado: ID={contact_id} | Tel={phone}")
-
-                    # Agregar nota enriquecida
-                    await add_note_to_contact(contact_id, note)
-
-                    return f"OK - ID: {contact_id}"
+                    # 🔒 Log final si se encontró
+                    logger.info(f"✅ Contacto encontrado | ID={result['id']} | Tel={result['phone']}")
+                    return f"OK - ID: {result['id']}"
         except Exception as e:
             logger.warning(f"⚠️ Error durante la búsqueda: {e}")
-
-    logger.info(f"❌ Número no encontrado: {normalized_number}")
+    
+    # 🔒 Log final si no se encontró
+    logger.info(f"❌ Contacto NO encontrado: {normalized_number}")
     return "NOT FOUND"
+
 
 # Webhook de Aircall enriquecido
 @app.post("/webhook/aircall")
