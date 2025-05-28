@@ -54,21 +54,22 @@ async def find_contact_by_phone(normalized_number: str) -> str:
     async with httpx.AsyncClient() as client:
         tasks = [asyncio.create_task(search_page(client, page, normalized_number, sem)) for page in range(1, 61)]
 
-        while tasks:
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-
-            for task in done:
-                result = task.result()
+        try:
+            for completed_task in asyncio.as_completed(tasks):
+                result = await completed_task
                 if result:
-                    for pending_task in pending:
-                        pending_task.cancel()
+                    # Si se encontró, cancelar el resto
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
                     logger.info(f"✅ Contacto encontrado: Número {normalized_number} | ID={result['id']} | Tel={result['phone']}")
                     return f"OK - ID: {result['id']}"
-
-            tasks = list(pending)
+        except Exception as e:
+            logger.warning(f"⚠️ Error durante la búsqueda: {e}")
 
     logger.info(f"❌ Número no encontrado: {normalized_number}")
     return "NOT FOUND"
+
 
 #  Webhook Aircall
 @app.post("/webhook/aircall")
