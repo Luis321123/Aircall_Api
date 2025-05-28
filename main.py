@@ -1,9 +1,12 @@
+from fastapi import FastAPI
 import asyncio
 import httpx
 import logging
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+app = FastAPI()
 
 MAX_CONCURRENT_REQUESTS = 10
 contact_cache = {}  # Estructura: {phone_number: (resultado, expiry_datetime)}
