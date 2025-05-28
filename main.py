@@ -4,27 +4,26 @@ import re
 import logging
 import asyncio
 
-logging.getLogger("httpx").setLevel(logging.WARNING)
-
-# ⚙️ Configuración del logger
+# ⚙️ Configuración del logger (nivel INFO, sin logs de httpx)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Oculta logs de httpx
 
 app = FastAPI()
 
-# 🔐 API Key de GoHighLevel
+# 🔐 Configuración API
 GHL_API_KEY = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ims3Um9lUUtUMDZPZHY4Um9GT2pnIiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzNjEzNDkwOTUzLCJzdWIiOiJyTjlhazB3czJ1YWJUa2tQQllVYiJ9.dFA5LRcQ2qZ4zBSfVRhG423LsEhrDgrbDcQfFMSMv0k"
 GHL_BASE_URL = "https://rest.gohighlevel.com/v1/contacts/"
 MAX_CONCURRENT_REQUESTS = 1
 
-# 🧼 Normaliza números
+# 🧼 Normaliza el número telefónico
 def normalize_phone(phone: str) -> str:
     return re.sub(r"[^\d]", "", phone)
 
-# 🔍 Subproceso para buscar contactos en una página
+# 🔍 Buscar contacto en una sola página
 async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
     async with sem:
         try:
@@ -44,12 +43,11 @@ async def search_page(client, page, normalized_number, sem: asyncio.Semaphore):
                     if normalized_contact_phone.endswith(normalized_number) or normalized_number.endswith(normalized_contact_phone):
                         return contact
         except Exception:
-            return None
+            pass
     return None
 
-# 🔍 Búsqueda principal
+# 🔍 Buscar contacto completo
 async def find_contact_by_phone(normalized_number: str) -> str:
-    logger.info(f"🔎 Buscando contacto con número: {normalized_number}")
     sem = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
     async with httpx.AsyncClient() as client:
@@ -61,34 +59,29 @@ async def find_contact_by_phone(normalized_number: str) -> str:
             for task in done:
                 result = task.result()
                 if result:
-                    logger.info(f"✅ Contacto encontrado: ID={result['id']} | Tel={result['phone']}")
-                    # Cancelar tareas restantes
                     for pending_task in pending:
                         pending_task.cancel()
+                    logger.info(f"✅ Contacto encontrado: ID={result['id']} | Tel={result['phone']}")
                     return f"OK - ID: {result['id']}"
 
-            # Continuar con las tareas pendientes
             tasks = list(pending)
 
     logger.info("❌ Contacto no encontrado")
     return "NOT FOUND"
 
-
 # 📞 Webhook Aircall
 @app.post("/webhook/aircall")
 async def handle_aircall_webhook(request: Request):
     body = await request.json()
-    logger.info("📩 Webhook recibido")
 
-    try:
-        raw_phone = body.get("data", {}).get("raw_digits")
-        if not raw_phone:
-            return {"status": "ERROR", "detail": "No se recibió número de teléfono"}
+    # Solo proceder si es un evento de llamada respondida
+    if body.get("event") != "call.answered":
+        return {"status": "IGNORED", "detail": "No es un evento de llamada respondida"}
 
-        normalized_number = normalize_phone(raw_phone)
-        result = await find_contact_by_phone(normalized_number)
-        return {"status": result}
+    raw_phone = body.get("data", {}).get("raw_digits")
+    if not raw_phone:
+        return {"status": "ERROR", "detail": "No se recibió número de teléfono"}
 
-    except Exception as e:
-        logger.exception(f"❌ Error procesando el webhook: {e}")
-        return {"status": "ERROR", "detail": str(e)}
+    normalized_number = normalize_phone(raw_phone)
+    result = await find_contact_by_phone(normalized_number)
+    return {"status": result}
