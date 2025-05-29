@@ -4,7 +4,8 @@ import re
 import logging
 import asyncio
 from typing import Optional, Dict, Any
-
+from datetime import datetime
+import pytz
 # Logger setup
 logging.basicConfig(
     level=logging.INFO,
@@ -107,11 +108,7 @@ async def find_contact_and_add_note(normalized_number: str, note: str) -> str:
 
 @app.post("/webhook/aircall")
 async def handle_aircall_webhook(request: Request):
-    """Recibe eventos de webhook desde Aircall y agrega notas en GHL."""
-    try:
-        body = await request.json()
-    except Exception:
-        return {"status": "ERROR", "detail": "JSON inválido"}
+    body = await request.json()
 
     if body.get("event") != "call.ended":
         return {"status": "IGNORED", "detail": "No es una llamada finalizada"}
@@ -122,22 +119,25 @@ async def handle_aircall_webhook(request: Request):
 
     normalized_number = normalize_phone(raw_phone)
 
-    # Preparar contenido de nota
-    data = body.get("data", {})
-    agent = data.get("user", {}).get("name", "Desconocido")
-    answered = "Sí" if data.get("answered") else "No"
-    duration = data.get("duration", 0)
+    # Datos adicionales para la nota
+    agent = body.get("data", {}).get("user", {}).get("name", "Desconocido")
+    answered = "Sí" if body.get("data", {}).get("answered") else "No"
+    duration = body.get("data", {}).get("duration", 0)
+    recording_url = body.get("data", {}).get("recordings", [{}])[0].get("url", "No disponible")
 
-    recordings = data.get("recordings", [])
-    recording_url = recordings[0].get("url") if recordings else "No disponible"
+    # Fecha y hora exacta (en hora de Colombia)
+    utc_now = datetime.utcnow().replace(tzinfo=pytz.utc)
+    colombia_time = utc_now.astimezone(pytz.timezone("America/Bogota"))
+    finalizada = colombia_time.strftime("%Y-%m-%d %H:%M:%S")
 
-    note = (
+    nota = (
         f"📞 Llamada registrada desde Aircall\n"
         f"👤 Agente: {agent}\n"
         f"✅ Atendida: {answered}\n"
         f"⏱️ Duración: {duration} segundos\n"
-        f"🎙️ Grabación: {recording_url}"
+        f"🎙️ Grabación: {recording_url}\n"
+        f"📆 Finalizada: {finalizada} (Colombia)"
     )
 
-    result = await find_contact_and_add_note(normalized_number, note)
+    result = await find_contact_and_add_note(normalized_number, nota)
     return {"status": result}
