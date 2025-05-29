@@ -128,7 +128,7 @@ async def handle_aircall_webhook(request: Request):
     # Fecha y hora exacta (en hora de Colombia)
     utc_now = datetime.utcnow().replace(tzinfo=pytz.utc)
     colombia_time = utc_now.astimezone(pytz.timezone("America/Bogota"))
-    finalizada = colombia_time.strftime("%Y-%m-%d %H:%M:%S")
+    finalizada = colombia_time.strftime("%Y-%m-%d %I:%M:%S %p")
 
     nota = (
         f"📞 Llamada registrada desde Aircall\n"
